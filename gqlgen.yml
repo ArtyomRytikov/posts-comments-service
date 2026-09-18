@@ -1,0 +1,27 @@
+schema:
+  - internal/api/schema.graphqls
+exec:
+  filename: internal/api/generated/generated.go
+  package: generated
+model:
+  filename: internal/api/model/models_gen.go
+  package: model
+resolver:
+  layout: follow-schema
+  dir: internal/api
+  package: api
+  filename_template: "{name}.resolvers.go"
+models:
+  Time:
+    model:
+      - github.com/99designs/gqlgen/graphql.Time
+  Post:
+    fields:
+      comments:
+        resolver: true
+      commentFeed:
+        resolver: true
+  Comment:
+    fields:
+      replies:
+        resolver: true

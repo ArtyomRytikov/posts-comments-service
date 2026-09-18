@@ -1,0 +1,83 @@
+"An RFC 3339 timestamp in UTC."
+scalar Time
+
+type Query {
+  posts(first: Int! = 20, after: String): PostConnection!
+  post(id: ID!): Post!
+}
+
+type Mutation {
+  "The X-User-ID header supplies the author identity."
+  createPost(input: CreatePostInput!): Post!
+  createComment(input: CreateCommentInput!): Comment!
+  "Only the author of the post can change this setting."
+  setCommentsEnabled(postID: ID!, enabled: Boolean!): Post!
+}
+
+type Subscription {
+  "New comments for one post, including replies. Events are not persisted."
+  commentAdded(postID: ID!): Comment!
+}
+
+input CreatePostInput {
+  title: String!
+  body: String!
+  commentsEnabled: Boolean! = true
+}
+
+input CreateCommentInput {
+  postID: ID!
+  "Omit for a root comment. The parent must belong to the same post."
+  parentID: ID
+  "At most 2000 Unicode characters."
+  body: String!
+}
+
+type Post {
+  id: ID!
+  authorID: ID!
+  title: String!
+  body: String!
+  commentsEnabled: Boolean!
+  createdAt: Time!
+  "Root comments only, in ascending creation ID order."
+  comments(first: Int! = 20, after: String): CommentConnection!
+  "All comments, including replies, with parentID for iterative tree building."
+  commentFeed(first: Int! = 20, after: String): CommentConnection!
+}
+
+type Comment {
+  id: ID!
+  postID: ID!
+  parentID: ID
+  authorID: ID!
+  body: String!
+  createdAt: Time!
+  "Immediate replies. Storage supports arbitrary depth; query depth is bounded."
+  replies(first: Int! = 20, after: String): CommentConnection!
+}
+
+type PostConnection {
+  edges: [PostEdge!]!
+  pageInfo: PageInfo!
+}
+
+type PostEdge {
+  cursor: String!
+  node: Post!
+}
+
+type CommentConnection {
+  edges: [CommentEdge!]!
+  pageInfo: PageInfo!
+}
+
+type CommentEdge {
+  cursor: String!
+  node: Comment!
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  endCursor: String
+}
