@@ -340,6 +340,24 @@ func waitPost(t *testing.T, stream <-chan int64, expected int64) {
 	}
 }
 
+func TestHTTPSubscriptionsRequireWebsocket(t *testing.T) {
+	events := &watchedEvents{Broker: pubsub.New(32), started: make(chan int64, 1), stopped: make(chan int64, 1)}
+	t.Cleanup(events.Close)
+	server, _ := testServer(t, memory.New(), events)
+	server.Client().Timeout = time.Second
+	post := nodeID(t, request(t, server, "author", createPost, nil), "createPost")
+	result := request(t, server, "", `subscription($id:ID!){commentAdded(postID:$id){id}}`, map[string]any{"id": post})
+	errorCode(t, result, "BAD_USER_INPUT")
+	if result.Errors[0].Message != "subscriptions require a WebSocket connection" {
+		t.Fatalf("unexpected transport error: %+v", result.Errors)
+	}
+	select {
+	case <-events.started:
+		t.Fatal("HTTP subscription reached the broker")
+	default:
+	}
+}
+
 func TestWebsocketSubscriptionIsolationAndDisconnect(t *testing.T) {
 	events := &watchedEvents{Broker: pubsub.New(32), started: make(chan int64, 4), stopped: make(chan int64, 4)}
 	t.Cleanup(events.Close)

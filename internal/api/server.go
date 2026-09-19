@@ -29,6 +29,8 @@ const (
 	operationTimeout = 10 * time.Second
 )
 
+type websocketRequestKey struct{}
+
 func New(svc *service.Service, logger *slog.Logger) http.Handler {
 	if logger == nil {
 		logger = slog.Default()
@@ -39,13 +41,7 @@ func New(svc *service.Service, logger *slog.Logger) http.Handler {
 	cfg.Complexity.Post.CommentFeed = connectionComplexity
 	cfg.Complexity.Comment.Replies = connectionComplexity
 	server := handler.New(generated.NewExecutableSchema(cfg))
-	server.AddTransport(transport.Websocket{
-		// The default Gorilla origin check accepts absent Origin headers and
-		// otherwise requires the Origin host to match the request host.
-		Upgrader:         websocket.Upgrader{HandshakeTimeout: 5 * time.Second},
-		InitTimeout:      5 * time.Second,
-		PingPongInterval: 20 * time.Second,
-	})
+	server.AddTransport(socketTransport{logger: logger})
 	server.AddTransport(transport.Options{})
 	server.AddTransport(transport.GET{})
 	server.AddTransport(transport.POST{})
@@ -76,7 +72,7 @@ func New(svc *service.Service, logger *slog.Logger) http.Handler {
 		r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 		ctx := context.WithValue(r.Context(), actorKey{}, r.Header.Get("X-User-ID"))
 		if websocket.IsWebSocketUpgrade(r) {
-			w = deadlineWriter{w}
+			ctx = context.WithValue(ctx, websocketRequestKey{}, true)
 		}
 		server.ServeHTTP(w, r.WithContext(ctx))
 	}))

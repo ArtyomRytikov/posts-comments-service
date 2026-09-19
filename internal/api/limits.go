@@ -20,7 +20,10 @@ func (operationLimits) MutateOperationParameters(_ context.Context, params *grap
 	return nil
 }
 
-func (operationLimits) MutateOperationContext(_ context.Context, op *graphql.OperationContext) *gqlerror.Error {
+func (operationLimits) MutateOperationContext(ctx context.Context, op *graphql.OperationContext) *gqlerror.Error {
+	if op.Operation.Operation == ast.Subscription && ctx.Value(websocketRequestKey{}) != true {
+		return &gqlerror.Error{Message: "subscriptions require a WebSocket connection", Extensions: map[string]any{"code": "BAD_USER_INPUT"}}
+	}
 	// Expand fragment references iteratively. The visit budget also bounds
 	// repeated fragment expansion before gqlgen calculates field complexity.
 	type selection struct {

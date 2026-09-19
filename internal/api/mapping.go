@@ -10,7 +10,7 @@ import (
 
 func postModel(p domain.Post) *model.Post {
 	return &model.Post{ID: strconv.FormatInt(p.ID, 10), AuthorID: p.AuthorID, Title: p.Title,
-		Body: p.Body, CommentsEnabled: p.CommentsEnabled, CreatedAt: p.CreatedAt}
+		Body: p.Body, CommentsEnabled: p.CommentsEnabled, CreatedAt: p.CreatedAt.UTC()}
 }
 
 func commentModel(c domain.Comment) *model.Comment {
@@ -20,7 +20,7 @@ func commentModel(c domain.Comment) *model.Comment {
 		parent = &id
 	}
 	return &model.Comment{ID: strconv.FormatInt(c.ID, 10), PostID: strconv.FormatInt(c.PostID, 10),
-		ParentID: parent, AuthorID: c.AuthorID, Body: c.Body, CreatedAt: c.CreatedAt}
+		ParentID: parent, AuthorID: c.AuthorID, Body: c.Body, CreatedAt: c.CreatedAt.UTC()}
 }
 
 func postConnection(page domain.PostPage) *model.PostConnection {
