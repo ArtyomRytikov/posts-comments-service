@@ -28,7 +28,7 @@ func Decode(cursor, scope string) (int64, error) {
 		return 0, domain.ErrInvalidCursor
 	}
 	raw, err := base64.RawURLEncoding.Strict().DecodeString(cursor)
-	if err != nil {
+	if err != nil || base64.RawURLEncoding.EncodeToString(raw) != cursor {
 		return 0, domain.ErrInvalidCursor
 	}
 	parts := strings.Split(string(raw), "|")

@@ -46,3 +46,14 @@ func FuzzDecode(f *testing.F) {
 		}
 	})
 }
+
+// Strict Base64 decoding still ignores CR/LF; cursors must have one canonical
+// wire representation rather than accepting silently modified input.
+func TestCursorRejectsEmbeddedNewlines(t *testing.T) {
+	cursor := Encode(42, PostsScope)
+	for _, invalid := range []string{cursor + "\n", "\r" + cursor, cursor[:4] + "\r\n" + cursor[4:]} {
+		if _, err := Decode(invalid, PostsScope); !errors.Is(err, domain.ErrInvalidCursor) {
+			t.Errorf("accepted noncanonical cursor %q: %v", invalid, err)
+		}
+	}
+}
