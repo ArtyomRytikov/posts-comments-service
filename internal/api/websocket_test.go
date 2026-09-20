@@ -300,7 +300,7 @@ func TestOperationDeadlineReachesResolversAndDataLoader(t *testing.T) {
 
 func TestSubscriptionStorageCallsHaveIndependentDeadlines(t *testing.T) {
 	repo := &deadlineRepo{Repository: memory.New(), contexts: make(chan context.Context, 8)}
-	events := &watchedEvents{Broker: pubsub.New(32), started: make(chan int64, 1), stopped: make(chan int64, 1)}
+	events := &watchedEvents{Broker: pubsub.New(32), started: make(chan int64, 1), stopped: make(chan int64, 1), contexts: make(chan context.Context, 1)}
 	t.Cleanup(events.Close)
 	server, _ := testServer(t, repo, events)
 	post := nodeID(t, request(t, server, "author", createPost, nil), "createPost")
@@ -312,6 +312,10 @@ func TestSubscriptionStorageCallsHaveIndependentDeadlines(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitPost(t, events.started, postID)
+	streamContext := <-events.contexts
+	if deadline, ok := streamContext.Deadline(); ok {
+		t.Fatalf("subscription lifetime unexpectedly bounded by %v", deadline)
+	}
 	checkRead := func() {
 		t.Helper()
 		select {
@@ -344,7 +348,15 @@ func TestSubscriptionStorageCallsHaveIndependentDeadlines(t *testing.T) {
 			t.Fatalf("subscription did not survive read-context cancellation: %+v", msg)
 		}
 		checkRead() // Each event's DataLoader query gets its own deadline.
+		if err := streamContext.Err(); err != nil {
+			t.Fatalf("read completion canceled the subscription: %v", err)
+		}
 	}
 	_ = conn.Close()
 	waitPost(t, events.stopped, postID)
+	select {
+	case <-streamContext.Done():
+	case <-time.After(time.Second):
+		t.Fatal("disconnect did not cancel the subscription context")
+	}
 }

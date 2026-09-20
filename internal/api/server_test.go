@@ -44,11 +44,16 @@ func testServer(t *testing.T, repo repository.Repository, events service.Events)
 
 func request(t *testing.T, server *httptest.Server, actor, query string, variables map[string]any) response {
 	t.Helper()
+	return requestURL(t, server.Client(), server.URL, actor, query, variables)
+}
+
+func requestURL(t *testing.T, client *http.Client, baseURL, actor, query string, variables map[string]any) response {
+	t.Helper()
 	body, err := json.Marshal(map[string]any{"query": query, "variables": variables})
 	if err != nil {
 		t.Fatal(err)
 	}
-	req, err := http.NewRequest(http.MethodPost, server.URL+"/query", bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, baseURL+"/query", bytes.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +61,7 @@ func request(t *testing.T, server *httptest.Server, actor, query string, variabl
 	if actor != "" {
 		req.Header.Set("X-User-ID", actor)
 	}
-	res, err := server.Client().Do(req)
+	res, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -317,12 +322,16 @@ func TestErrorsAreSanitizedAndQueriesBounded(t *testing.T) {
 
 type watchedEvents struct {
 	*pubsub.Broker
-	started chan int64
-	stopped chan int64
+	started  chan int64
+	stopped  chan int64
+	contexts chan context.Context
 }
 
 func (e *watchedEvents) Subscribe(ctx context.Context, postID int64) <-chan domain.Comment {
 	stream := e.Broker.Subscribe(ctx, postID)
+	if e.contexts != nil {
+		e.contexts <- ctx
+	}
 	e.started <- postID
 	go func() { <-ctx.Done(); e.stopped <- postID }()
 	return stream
