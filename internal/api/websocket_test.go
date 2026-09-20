@@ -297,3 +297,54 @@ func TestOperationDeadlineReachesResolversAndDataLoader(t *testing.T) {
 		})
 	}
 }
+
+func TestSubscriptionStorageCallsHaveIndependentDeadlines(t *testing.T) {
+	repo := &deadlineRepo{Repository: memory.New(), contexts: make(chan context.Context, 8)}
+	events := &watchedEvents{Broker: pubsub.New(32), started: make(chan int64, 1), stopped: make(chan int64, 1)}
+	t.Cleanup(events.Close)
+	server, _ := testServer(t, repo, events)
+	post := nodeID(t, request(t, server, "author", createPost, nil), "createPost")
+	postID, _ := strconv.ParseInt(post, 10, 64)
+	conn := openSocket(t, server, "graphql-transport-ws")
+	if err := conn.WriteJSON(map[string]any{"id": "bounded", "type": "subscribe", "payload": map[string]any{
+		"query": fmt.Sprintf(`subscription{commentAdded(postID:%q){id replies(first:1){edges{node{id}}}}}`, post),
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	waitPost(t, events.started, postID)
+	checkRead := func() {
+		t.Helper()
+		select {
+		case ctx := <-repo.contexts:
+			deadline, ok := ctx.Deadline()
+			if !ok || time.Until(deadline) <= 0 || time.Until(deadline) > 10*time.Second {
+				t.Errorf("subscription storage call has no bounded deadline: %v, %v", deadline, ok)
+				return
+			}
+			select {
+			case <-ctx.Done():
+			case <-time.After(time.Second):
+				t.Error("completed storage call retained its timeout context")
+			}
+		case <-time.After(time.Second):
+			t.Fatal("missing subscription storage call")
+		}
+	}
+	checkRead() // Initial post lookup.
+	for range 2 {
+		wanted := addComment(t, server, post, nil, "event with a nested read")
+		var msg struct {
+			Type    string
+			Payload response
+		}
+		if err := conn.ReadJSON(&msg); err != nil {
+			t.Fatal(err)
+		}
+		if msg.Type != "next" || nodeID(t, msg.Payload, "commentAdded") != wanted {
+			t.Fatalf("subscription did not survive read-context cancellation: %+v", msg)
+		}
+		checkRead() // Each event's DataLoader query gets its own deadline.
+	}
+	_ = conn.Close()
+	waitPost(t, events.stopped, postID)
+}

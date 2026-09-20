@@ -21,6 +21,10 @@ func actor(ctx context.Context) string {
 
 func withLoader(ctx context.Context, svc *service.Service) context.Context {
 	loader := dataloadgen.NewLoader(func(ctx context.Context, keys []domain.CommentRequest) ([]domain.CommentPage, []error) {
+		// Subscriptions have no operation deadline. Bound each storage batch
+		// independently so a stalled event read cannot retain a pool connection.
+		ctx, cancel := context.WithTimeout(ctx, operationTimeout)
+		defer cancel()
 		pages, err := svc.CommentPages(ctx, keys)
 		if err == nil {
 			return pages, nil

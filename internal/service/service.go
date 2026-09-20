@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/ArtyomRytikov/posts-comments-service/internal/domain"
@@ -93,7 +94,10 @@ func (s *Service) CommentPages(ctx context.Context, requests []domain.CommentReq
 }
 
 func (s *Service) Subscribe(ctx context.Context, postID int64) (<-chan domain.Comment, error) {
-	if _, err := s.GetPost(ctx, postID); err != nil {
+	// Bound the initial lookup without putting a deadline on the event stream.
+	lookup, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if _, err := s.GetPost(lookup, postID); err != nil {
 		return nil, err
 	}
 	return s.events.Subscribe(ctx, postID), nil
