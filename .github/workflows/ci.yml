@@ -26,6 +26,32 @@ jobs:
           cache: true
       - run: test -z "$(gofmt -l .)"
       - run: go vet ./...
-      - run: go test -race -count=1 ./...
+      - run: go test -race -v -count=1 ./...
+      - run: go build ./...
       - run: go tool gqlgen generate && git diff --exit-code
       - run: docker build -t posts-comments-service:ci .
+      - name: Run container with in-memory storage
+        run: |
+          docker run -d --name posts-memory -p 127.0.0.1:18080:8080 posts-comments-service:ci
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18080/readyz; then break; fi
+            sleep 1
+          done
+          TEST_SERVER_URL=http://127.0.0.1:18080 go test -race -v -count=1 ./internal/api -run '^TestRunningServerWorkflow$'
+      - name: Run Compose with PostgreSQL storage
+        env:
+          POSTGRES_PASSWORD: disposable-ci-password
+          APP_PORT: "18081"
+        run: |
+          docker compose up --build --wait --wait-timeout 120
+          TEST_SERVER_URL=http://127.0.0.1:18081 go test -race -v -count=1 ./internal/api -run '^TestRunningServerWorkflow$'
+      - name: Container logs and cleanup
+        if: always()
+        env:
+          POSTGRES_PASSWORD: disposable-ci-password
+          APP_PORT: "18081"
+        run: |
+          docker logs posts-memory || true
+          docker compose logs
+          docker rm -f posts-memory || true
+          docker compose down -v
